@@ -230,7 +230,7 @@ void umimgfromdata(UmkaStackSlot *p, UmkaStackSlot *r) {
 	th_vf2 dm = *(th_vf2 *)&p[0];
 	uint32_t *data = (uint32_t *)p[1].ptrVal;
 
-	th_image *img = th_get_image_err(p[2].uintVal);
+	th_image *img = th_alloc_image();
 	if (!img) return;
 	th_image_from_data(img, data, dm);
 
@@ -559,6 +559,17 @@ void umsetuniformint(UmkaStackSlot *p, UmkaStackSlot *r) {
 	glUniform1i(p[1].intVal, p[0].intVal);
 }
 
+void umsetuniformvf2(UmkaStackSlot *p, UmkaStackSlot *r) {
+	th_shader *s = th_get_shader_err(p[2].intVal);
+	if (!s) return;
+	th_vf2 *v = (th_vf2 *)&p[0];
+
+	th_canvas_flush();
+	th_image_flush();
+	glUseProgram(*s);
+	glUniform2f(p[1].intVal, v->x, v->y);
+}
+
 void _th_umka_bind(void *umka) {
 	// etc
 	umkaAddFunc(umka, "cfopen", &umfopen);
@@ -639,6 +650,7 @@ void _th_umka_bind(void *umka) {
 
 	// shader
 	umkaAddFunc(umka, "csetuniformint", umsetuniformint);
+	umkaAddFunc(umka, "csetuniformvf2", umsetuniformvf2);
 	umkaAddFunc(umka, "ccompilecanvasshader", umcompilecanvasshader);
 	umkaAddFunc(umka, "ccompileimageshader", umcompileimageshader);
 	umkaAddFunc(umka, "cpickcanvasshader", umpickcanvasshader);
@@ -672,5 +684,5 @@ void _th_umka_bind(void *umka) {
 	umkaAddModule(umka, "ui/label.um", th_em_modulesrc[index++]);
 	umkaAddModule(umka, "ui/grid.um", th_em_modulesrc[index++]);
 	umkaAddModule(umka, "ui/imagebox.um", th_em_modulesrc[index++]);
-	umkaAddModule(umka, "ui/shader.um", th_em_modulesrc[index++]);
+	umkaAddModule(umka, "shader.um", th_em_modulesrc[index++]);
 }
