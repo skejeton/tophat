@@ -370,12 +370,14 @@ void umsoundstop(UmkaStackSlot *p, UmkaStackSlot *r) {
 ///////////////////////
 // raycast
 void umraygetcoll(UmkaStackSlot *p, UmkaStackSlot *r) {
-	th_ent **scene = (th_ent **)p[0].ptrVal;
+	th_coll *colls = p[5].ptrVal;
+	int *count = p[4].ptrVal;
+	int maxColls = p[3].intVal;
+	int sceneLen = p[2].intVal;
 	th_ray *ra = (th_ray *)p[1].ptrVal;
-	int count = p[2].intVal;
-	th_vf2 *ic = (th_vf2 *)p[3].ptrVal;
+	th_ent **scene = (th_ent **)p[0].ptrVal;
 
-	r->intVal = th_ray_getcoll(ra, scene, count, ic);
+	th_ray_getcoll(ra, colls, maxColls, count, scene, sceneLen);
 }
 
 void umraygettmapcoll(UmkaStackSlot *p, UmkaStackSlot *r) {
@@ -564,10 +566,15 @@ void umsetuniformvf2(UmkaStackSlot *p, UmkaStackSlot *r) {
 	if (!s) return;
 	th_vf2 *v = (th_vf2 *)&p[0];
 
+	int sw, sh;
+	th_window_get_dimensions(&sw, &sh);
+	sw *= 0.5f;
+	sh *= -0.5f;
+
 	th_canvas_flush();
 	th_image_flush();
 	glUseProgram(*s);
-	glUniform2f(p[1].intVal, v->x, v->y);
+	glUniform2f(p[1].intVal, v->x / sw + 1.f, v->y / sh + 1.f);
 }
 
 void _th_umka_bind(void *umka) {
