@@ -10,184 +10,184 @@
  */
 
 type (
-  Parser = struct {
-    pos: uint
-    sourceLen: uint
-    source: str
+	Parser = struct {
+		pos: uint
+		sourceLen: uint
+		source: str
 
-    data: map[str]str
-  }
+		data: map[str]str
+	}
 
-  Token = struct {
-    kind: int
-    value: str
-  }
+	Token = struct {
+		kind: int
+		value: str
+	}
 
-  TomlResult* = struct {
-    data: map[str]str
-  }
+	TomlResult* = struct {
+		data: map[str]str
+	}
 )
 
 const (
-  tokInvalid = 0
-  tokEof = 1
-  tokSemi = 2
-  tokAssign = 3
-  tokString = 4
+	tokInvalid = 0
+	tokEof = 1
+	tokSemi = 2
+	tokAssign = 3
+	tokString = 4
 
-  errUnknown = 0
-  errUnclosedString = 1
-  errCount = 2
+	errUnknown = 0
+	errUnclosedString = 1
+	errCount = 2
 )
 
 // [\n]
 fn isSemi(c: char): bool {
-  return c == '\n'
+	return c == '\n'
 }
 
 // [ \t]
 fn isSpace(c: char): bool {
-  return c == ' ' || c == '\t'
+	return c == ' ' || c == '\t'
 }
 
 // [ \t]
 fn isSkip(c: char): bool {
-  return c == ' ' || c == '\t' || c == '\r' || c == '\n'
+	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
 
 // [A-Za-z0-9_-]
 fn isIdent(c: char): bool {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || (c == '_') || (c == '-')
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || (c == '_') || (c == '-')
 }
 
 // FIXME: this function will choke on invalid input
 fn escapeStr(string: str): str {
-  pos := 0
-  pos += 1 // skip "
-  result := ""
+	pos := 0
+	pos += 1 // skip "
+	result := ""
 
-  for pos < len(string) && string[pos] != "\"" {
-    if string[pos] == '\\' {
-      pos++
-      if pos < len(string) {
-        result += string[pos]
-        pos++
-      }
-    } else {
-      result += string[pos]
-      pos++
-    }
-  }
+	for pos < len(string) && string[pos] != "\"" {
+		if string[pos] == '\\' {
+			pos++
+			if pos < len(string) {
+				result += string[pos]
+				pos++
+			}
+		} else {
+			result += string[pos]
+			pos++
+		}
+	}
 
-  return result
+	return result
 }
 
 fn (p: ^Parser) next() {
-  if p.pos < p.sourceLen {
-    p.pos += 1
-  }
+	if p.pos < p.sourceLen {
+		p.pos += 1
+	}
 }
 
 fn (p: ^Parser) get(): char {
-  if p.pos >= p.sourceLen {
-    return '\0'
-  }
-  return p.source[p.pos]
+	if p.pos >= p.sourceLen {
+		return '\0'
+	}
+	return p.source[p.pos]
 }
 
 fn (p: ^Parser) skipBlank() {
-  for isSkip(p.get()) {
-    p.next()
-  }
+	for isSkip(p.get()) {
+		p.next()
+	}
 }
 
 fn (p: ^Parser) nextTokenKind(): int {
-  switch (p.get()) {
-    case '"':
-      p.next() // Skip quote
-      for p.get() != '\0' && p.get() != '"' {
-        if p.get() == '\\' {
-          p.next()
-        }
-        p.next()
-      }
+	switch (p.get()) {
+		case '"':
+			p.next() // Skip quote
+			for p.get() != '\0' && p.get() != '"' {
+				if p.get() == '\\' {
+					p.next()
+				}
+				p.next()
+			}
 
-      // TODO: Put error into the parser
-      // Unfinished string
-      if p.get() == '\0' {
-        return tokInvalid
-      }
+			// TODO: Put error into the parser
+			// Unfinished string
+			if p.get() == '\0' {
+				return tokInvalid
+			}
 
-      p.next() // Skip quote
-      return tokString
-    case '=': 
-      p.next() // skip '='
-      return tokAssign
-    case '\0': 
-      return tokEof
-    default:
-      return tokInvalid
-  }
-  return tokInvalid
+			p.next() // Skip quote
+			return tokString
+		case '=': 
+			p.next() // skip '='
+			return tokAssign
+		case '\0': 
+			return tokEof
+		default:
+			return tokInvalid
+	}
+	return tokInvalid
 }
 
 fn (p: ^Parser) nextIdentToken(): Token {
-  p.skipBlank()
-  start := p.pos
+	p.skipBlank()
+	start := p.pos
 
-  for isIdent(p.get()) {
-    p.next()
-  }
+	for isIdent(p.get()) {
+		p.next()
+	}
 
-  end := p.pos
+	end := p.pos
 
-  // TODO: Quoted strings are technically also tokens
-  // TODO: Error handling
-  tt := tokInvalid
-  if start != end {
-    tt = tokString
-  }
+	// TODO: Quoted strings are technically also tokens
+	// TODO: Error handling
+	tt := tokInvalid
+	if start != end {
+		tt = tokString
+	}
 
-  return Token{kind: tt, value: slice(p.source, start, end)}
+	return Token{kind: tt, value: slice(p.source, start, end)}
 }
 
 fn (p: ^Parser) nextToken(): Token {
-  p.skipBlank()
+	p.skipBlank()
 
-  start := p.pos
+	start := p.pos
 
-  tt := p.nextTokenKind()
+	tt := p.nextTokenKind()
 
-  end := p.pos
+	end := p.pos
 
-  return Token{kind: tt, value: slice(p.source, start, end)}
+	return Token{kind: tt, value: slice(p.source, start, end)}
 }
 
 fn (p: ^Parser) expectToken(token: Token, toBeKind: int) {
-  if token.kind != toBeKind {
-    // TODO: Error handling
-  }
+	if token.kind != toBeKind {
+		// TODO: Error handling
+	}
 }
 
 fn (p: ^Parser) parseKeyValue() {
-  key := p.nextIdentToken()
-  p.expectToken(p.nextToken(), tokAssign)
-  value := p.nextToken()
-  p.expectToken(key, tokString)
-  p.expectToken(value, tokString)
+	key := p.nextIdentToken()
+	p.expectToken(p.nextToken(), tokAssign)
+	value := p.nextToken()
+	p.expectToken(key, tokString)
+	p.expectToken(value, tokString)
 
-  printf("Set `%s` `%s`\n", repr(key), repr(value))
-  if key.kind == tokString && value.kind == tokString {
-    p.data[key.value] = escapeStr(value.value);
-  }
+	printf("Set `%s` `%s`\n", repr(key), repr(value))
+	if key.kind == tokString && value.kind == tokString {
+		p.data[key.value] = escapeStr(value.value);
+	}
 }
 
 fn parse*(source: str): TomlResult {
-  p := Parser{source: source, sourceLen: len(source), data: map[str]str{}}
+	p := Parser{source: source, sourceLen: len(source), data: map[str]str{}}
 
-  for p.get() != '\0' {
-    p.parseKeyValue()
-  }
+	for p.get() != '\0' {
+		p.parseKeyValue()
+	}
 
-  return TomlResult{p.data}
+	return TomlResult{p.data}
 }

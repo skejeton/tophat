@@ -5,10 +5,10 @@
 import ("toml.um")
 
 fn expectToEqual(a, b: str) {
-  if a != b {
-    error(sprintf("'%s' != '%s'", a, b))
-  }
-  printf("Ok\n")
+	if a != b {
+		error(sprintf("'%s' != '%s'", a, b))
+	}
+	printf("Ok\n")
 }
 
 const input = "\n"+
@@ -17,8 +17,8 @@ const input = "\n"+
 " = \"Bruh\"";
 
 fn main() {
-  result := toml.parse(input)
+	result := toml.parse(input)
 
-  expectToEqual(result.data["a-_"], "Dam")
-  expectToEqual(result.data["1"], "A\"hh")
+	expectToEqual(result.data["a-_"], "Dam")
+	expectToEqual(result.data["1"], "A\"hh")
 }
