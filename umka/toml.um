@@ -7,6 +7,8 @@
  * 
  * Identifier tokens are not handled in nextToken/nextTokenKind because
  * TOML allows identifiers to start with numbers, so you'll have to know when you wanna retrieve it explicitly.
+ * 
+ * TODO: Handle newlines as semicolons, not as space
  */
 
 type (
@@ -15,7 +17,7 @@ type (
 		sourceLen: uint
 		source: str
 
-		data: map[str]str
+		data: map[str]interface{}
 	}
 
 	Token = struct {
@@ -24,8 +26,10 @@ type (
 	}
 
 	TomlResult* = struct {
-		data: map[str]str
+		data: map[str]interface{}
 	}
+
+	Accessor* = []str
 )
 
 const (
@@ -34,6 +38,7 @@ const (
 	tokSemi = 2
 	tokAssign = 3
 	tokString = 4
+	tokDot = 5
 
 	errUnknown = 0
 	errUnclosedString = 1
@@ -50,7 +55,7 @@ fn isSpace(c: char): bool {
 	return c == ' ' || c == '\t'
 }
 
-// [ \t]
+// [ \t\r\n]
 fn isSkip(c: char): bool {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
@@ -101,28 +106,41 @@ fn (p: ^Parser) skipBlank() {
 	}
 }
 
+fn (p: ^Parser) expectToken(token: Token, toBeKind: int) {
+	if token.kind != toBeKind {
+		// TODO: Error handling
+	}
+}
+
+fn (p: ^Parser) nextTokenString(): int {
+	p.next() // Skip quote
+	for p.get() != '\0' && p.get() != '"' {
+		if p.get() == '\\' {
+			p.next()
+		}
+		p.next()
+	}
+
+	// TODO: Put error into the parser
+	// Unfinished string
+	if p.get() == '\0' {
+		return tokInvalid
+	}
+
+	p.next() // Skip quote
+	return tokString
+}
+
 fn (p: ^Parser) nextTokenKind(): int {
 	switch (p.get()) {
 		case '"':
-			p.next() // Skip quote
-			for p.get() != '\0' && p.get() != '"' {
-				if p.get() == '\\' {
-					p.next()
-				}
-				p.next()
-			}
-
-			// TODO: Put error into the parser
-			// Unfinished string
-			if p.get() == '\0' {
-				return tokInvalid
-			}
-
-			p.next() // Skip quote
-			return tokString
+			return p.nextTokenString()
 		case '=': 
 			p.next() // skip '='
 			return tokAssign
+		case '.': 
+			p.next() // skip '.'
+			return tokDot
 		case '\0': 
 			return tokEof
 		default:
@@ -131,24 +149,27 @@ fn (p: ^Parser) nextTokenKind(): int {
 	return tokInvalid
 }
 
-fn (p: ^Parser) nextIdentToken(): Token {
+fn (p: ^Parser) nextIdent(): Token {
 	p.skipBlank()
 	start := p.pos
+	tt := tokInvalid
 
-	for isIdent(p.get()) {
-		p.next()
+	if isIdent(p.get()) {
+		for isIdent(p.get()) {
+			p.next()
+		}
+		tt = tokString
+	} else {
+		tt = p.nextTokenKind()
 	}
 
 	end := p.pos
 
-	// TODO: Quoted strings are technically also tokens
-	// TODO: Error handling
-	tt := tokInvalid
-	if start != end {
-		tt = tokString
-	}
+	token := Token{kind: tt, value: slice(p.source, start, end)}
+	p.expectToken(token, tokString)
 
-	return Token{kind: tt, value: slice(p.source, start, end)}
+	// TODO: Error handling if not string encountered
+	return token
 }
 
 fn (p: ^Parser) nextToken(): Token {
@@ -163,27 +184,66 @@ fn (p: ^Parser) nextToken(): Token {
 	return Token{kind: tt, value: slice(p.source, start, end)}
 }
 
-fn (p: ^Parser) expectToken(token: Token, toBeKind: int) {
-	if token.kind != toBeKind {
-		// TODO: Error handling
+fn (p: ^Parser) peekToken(): Token {
+	tempPos := p.pos
+
+	token := p.nextToken()
+
+	p.pos = tempPos
+
+	return token
+}
+
+// Runs escape sequences, if it's a quote string
+fn escapeStrToken(token: Token): str {
+	if token.kind == tokString && token.value[0] == '"' {
+		return escapeStr(token.value)
+	}
+	return token.value
+}
+
+fn (p: ^Parser) parseAccessor(): Accessor {
+	accessor := Accessor{escapeStrToken(p.nextIdent())}
+
+	for p.peekToken().kind == tokDot {
+		p.nextToken() // Skip dot
+		accessor = append(accessor, escapeStrToken(p.nextIdent()))
+	}
+
+	return accessor
+}
+
+fn (p: ^Parser) setAccessor(accessor: Accessor, value: interface{}) {
+	var tree: map[str]interface{} = p.data
+	var last: interface{} = null
+
+	for i, key in accessor {
+		if !validkey(tree, key) {
+			if i == len(accessor)-1 {
+				tree[key] = value
+			} else {
+				tree[key] = map[str]interface{}{}
+				tree = map[str]interface{}(tree[key])
+			}
+		} else {
+			tree = map[str]interface{}(tree[key])
+		}
 	}
 }
 
 fn (p: ^Parser) parseKeyValue() {
-	key := p.nextIdentToken()
-	p.expectToken(p.nextToken(), tokAssign)
+	accessor := p.parseAccessor()
+	assign := p.nextToken()
+	p.expectToken(assign, tokAssign)
 	value := p.nextToken()
-	p.expectToken(key, tokString)
 	p.expectToken(value, tokString)
 
-	printf("Set `%s` `%s`\n", repr(key), repr(value))
-	if key.kind == tokString && value.kind == tokString {
-		p.data[key.value] = escapeStr(value.value);
-	}
+	printf("Set `%s` `%s` `%s`\n", repr(assign), repr(accessor), repr(value))
+	p.setAccessor(accessor, escapeStrToken(value))
 }
 
 fn parse*(source: str): TomlResult {
-	p := Parser{source: source, sourceLen: len(source), data: map[str]str{}}
+	p := Parser{source: source, sourceLen: len(source), data: map[str]interface{}{}}
 
 	for p.get() != '\0' {
 		p.parseKeyValue()
