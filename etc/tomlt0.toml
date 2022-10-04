@@ -2,3 +2,10 @@ a-_ = "Dam"
 1 = "A\"hh"
 "\"I love you\"" = "too"
 game."fps" = "60"
+
+[debug]
+editor = "true"
+game."player position" = "false"
+
+[debug.2."123"]
+editor = ""

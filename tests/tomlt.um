@@ -2,7 +2,22 @@
  * Toml tests (umka/toml.um)
  */
 
-import ("toml.um")
+import ("toml.um"; "std.um")
+
+fn readFileStr(path: str): (bool, str) {
+  file := std.fopen(path, "r")
+  if file == null {
+    return false, ""
+  }
+  std.fseek(file, 0, std.seekEnd)
+  datasiz := std.ftell(file)
+  std.fseek(file, 0, std.seekBegin)
+
+  data := make([]char, datasiz+1)
+  std.fread(file, data)
+  
+  return true, data
+}
 
 fn expectToEqual(a, b: str) {
 	if a != b {
@@ -11,14 +26,20 @@ fn expectToEqual(a, b: str) {
 	printf("Ok\n")
 }
 
-const input = "\n"+
-"a-_ = \"Dam\"\n"+
-"1 = \"A\\\"hh\""+
-" = \"Bruh\"";
-
 fn main() {
-	result := toml.parse(input)
+	if ok, input := readFileStr("etc/tomlt0.toml"); ok {
+		result := toml.parse(input)
+    if error := result.getError(); error != null {
+      printf("%s", toml.formatError(error, input))
+      return
+    }
 
-	expectToEqual(result.data["a-_"], "Dam")
-	expectToEqual(result.data["1"], "A\"hh")
+    printf("%s\n", repr(result))
+		expectToEqual(str(result.data["a-_"]), "Dam")
+		expectToEqual(str(result.data["1"]), "A\"hh")
+		expectToEqual(str(result.data["\"I love you\""]), "too")
+    expectToEqual(str(map[str]interface{}(result.data["game"])["fps"]), "60")
+    expectToEqual(str(map[str]interface{}(result.data["debug"])["editor"]), "true")
+    expectToEqual(str(map[str]interface{}(map[str]interface{}(result.data["debug"])["game"])["player position"]), "false")
+	}
 }

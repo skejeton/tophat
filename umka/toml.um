@@ -12,25 +12,53 @@
  */
 
 type (
+	Accessor = []str
+
+	FileLoc* = struct {
+		line: int
+		column: int
+		offset: int
+	}
+	
+	Error* = struct {
+		location: FileLoc
+		code: int
+	}	
+
 	Parser = struct {
-		pos: uint
+		location: FileLoc
 		sourceLen: uint
 		source: str
 
+		section: Accessor
+
+		errors: []Error
 		data: map[str]interface{}
 	}
 
 	Token = struct {
 		kind: int
 		value: str
+		location: FileLoc
 	}
 
 	TomlResult* = struct {
+		errors: []Error
 		data: map[str]interface{}
 	}
-
-	Accessor* = []str
 )
+
+fn errorAtToken(token: Token, code: int): Error {
+	return Error{location: token.location, code: code}
+}
+
+fn errorAtParser(parser: ^Parser, code: int): Error {
+	return Error{location: parser.location, code: code}
+}
+
+fn errorAtLocation(location: FileLoc, code: int): Error {
+	return Error{location: location, code: code}
+}
 
 const (
 	tokInvalid = 0
@@ -39,25 +67,36 @@ const (
 	tokAssign = 3
 	tokString = 4
 	tokDot = 5
+	tokLBrack = 6 // [
+	tokRBrack = 7 // ]
 
-	errUnknown = 0
-	errUnclosedString = 1
-	errCount = 2
+	errUnknown* = 0
+	errUnclosedString* = 1
+	errUnexpectedToken* = 2
+	errUnexpectedCharacter* = 3
+	errExpectedKey* = 4
+	errFieldReassigned* = 5
+	errExpectedNewLine* = 6
+	errCount* = 7
 )
 
-// [\n]
-fn isSemi(c: char): bool {
-	return c == '\n'
+fn formatError*(error: ^Error, source: str): str {
+	const errCodeStr = [errCount]str{
+		"Unknown error",
+		"Unclosed string",
+		"Unexpected token",
+		"Unexpected character",
+		"Invalid token for key",
+		"Field reassigned", 
+		"Expected new line"}
+
+	return sprintf("error(%d:%d): %s", error.location.line+1, error.location.column+1, errCodeStr[error.code])	
 }
 
-// [ \t]
-fn isSpace(c: char): bool {
-	return c == ' ' || c == '\t'
-}
 
 // [ \t\r\n]
 fn isSkip(c: char): bool {
-	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
+	return c == ' ' || c == '\t' || c == '\r'
 }
 
 // [A-Za-z0-9_-]
@@ -87,17 +126,27 @@ fn escapeStr(string: str): str {
 	return result
 }
 
+fn (p: ^Parser) emitError(error: Error) {
+	p.errors = append(p.errors, error)
+}
+
 fn (p: ^Parser) next() {
-	if p.pos < p.sourceLen {
-		p.pos += 1
+	if p.location.offset < p.sourceLen {
+		if p.source[p.location.offset] == '\n' {
+			p.location.line += 1
+			p.location.column = 0
+		} else {
+			p.location.column += 1
+		}
+		p.location.offset += 1
 	}
 }
 
 fn (p: ^Parser) get(): char {
-	if p.pos >= p.sourceLen {
+	if p.location.offset >= p.sourceLen {
 		return '\0'
 	}
-	return p.source[p.pos]
+	return p.source[p.location.offset]
 }
 
 fn (p: ^Parser) skipBlank() {
@@ -108,22 +157,24 @@ fn (p: ^Parser) skipBlank() {
 
 fn (p: ^Parser) expectToken(token: Token, toBeKind: int) {
 	if token.kind != toBeKind {
-		// TODO: Error handling
+		p.emitError(errorAtToken(token, errUnexpectedToken))
 	}
 }
 
 fn (p: ^Parser) nextTokenString(): int {
+	location := p.location
+
 	p.next() // Skip quote
-	for p.get() != '\0' && p.get() != '"' {
+	for p.get() != '\0' && p.get() != '\n' && p.get() != '"' {
 		if p.get() == '\\' {
 			p.next()
 		}
 		p.next()
 	}
 
-	// TODO: Put error into the parser
 	// Unfinished string
-	if p.get() == '\0' {
+	if p.get() == '\0' || p.get() == '\n' {
+		p.emitError(errorAtLocation(location, errUnclosedString))
 		return tokInvalid
 	}
 
@@ -141,9 +192,21 @@ fn (p: ^Parser) nextTokenKind(): int {
 		case '.': 
 			p.next() // skip '.'
 			return tokDot
+		case '[': 
+			p.next() // skip '['
+			return tokLBrack
+		case ']': 
+			p.next() // skip ']'
+			return tokRBrack
+		case '\n': 
+			p.next() // skip '\n'
+			return tokSemi
 		case '\0': 
 			return tokEof
 		default:
+			if !isIdent(p.get()) {
+				p.emitError(errorAtParser(p, errUnexpectedCharacter))
+			}
 			return tokInvalid
 	}
 	return tokInvalid
@@ -151,7 +214,8 @@ fn (p: ^Parser) nextTokenKind(): int {
 
 fn (p: ^Parser) nextIdent(): Token {
 	p.skipBlank()
-	start := p.pos
+	location := p.location
+	start := p.location.offset
 	tt := tokInvalid
 
 	if isIdent(p.get()) {
@@ -163,33 +227,36 @@ fn (p: ^Parser) nextIdent(): Token {
 		tt = p.nextTokenKind()
 	}
 
-	end := p.pos
+	end := p.location.offset
 
-	token := Token{kind: tt, value: slice(p.source, start, end)}
-	p.expectToken(token, tokString)
+	token := Token{kind: tt, value: slice(p.source, start, end), location: location}
 
-	// TODO: Error handling if not string encountered
+	if tt != tokString {
+		p.emitError(errorAtToken(token, errExpectedKey))
+	}
+
 	return token
 }
 
 fn (p: ^Parser) nextToken(): Token {
 	p.skipBlank()
 
-	start := p.pos
+	location := p.location
+	start := p.location.offset
 
 	tt := p.nextTokenKind()
 
-	end := p.pos
+	end  := p.location.offset
 
-	return Token{kind: tt, value: slice(p.source, start, end)}
+	return Token{kind: tt, value: slice(p.source, start, end), location: location}
 }
 
 fn (p: ^Parser) peekToken(): Token {
-	tempPos := p.pos
+	tempLoc := p.location
 
 	token := p.nextToken()
 
-	p.pos = tempPos
+	p.location = tempLoc
 
 	return token
 }
@@ -213,41 +280,81 @@ fn (p: ^Parser) parseAccessor(): Accessor {
 	return accessor
 }
 
-fn (p: ^Parser) setAccessor(accessor: Accessor, value: interface{}) {
+fn (p: ^Parser) setAccessor(location: FileLoc, accessor: Accessor, value: interface{}) {
 	var tree: map[str]interface{} = p.data
-	var last: interface{} = null
 
 	for i, key in accessor {
-		if !validkey(tree, key) {
-			if i == len(accessor)-1 {
+		if i == len(accessor)-1 {
+			if !valid(tree[key]) {
 				tree[key] = value
 			} else {
-				tree[key] = map[str]interface{}{}
-				tree = map[str]interface{}(tree[key])
+				p.emitError(errorAtLocation(location, errFieldReassigned))
 			}
 		} else {
-			tree = map[str]interface{}(tree[key])
+			if !validkey(tree, key) {
+				tree[key] = map[str]interface{}{}
+				tree = map[str]interface{}(tree[key])
+			} else {
+				tree = map[str]interface{}(tree[key])
+			}
 		}
 	}
 }
 
 fn (p: ^Parser) parseKeyValue() {
+	location := p.location
 	accessor := p.parseAccessor()
+
 	assign := p.nextToken()
 	p.expectToken(assign, tokAssign)
 	value := p.nextToken()
 	p.expectToken(value, tokString)
 
 	printf("Set `%s` `%s` `%s`\n", repr(assign), repr(accessor), repr(value))
-	p.setAccessor(accessor, escapeStrToken(value))
+	p.setAccessor(location, append(p.section, accessor), escapeStrToken(value))
+}
+
+fn (p: ^Parser) parseSection() {
+	p.expectToken(p.nextToken(), tokLBrack)
+	p.section = p.parseAccessor()
+	p.expectToken(p.nextToken(), tokRBrack)
+}
+
+fn (p: ^Parser) expectSemi() {
+	token := p.nextToken()
+	if !(token.kind == tokSemi || token.kind == tokEof) {
+		p.emitError(errorAtToken(token, errExpectedNewLine))
+	}
+}
+
+fn (p: ^Parser) parseToplevel() {
+	switch p.peekToken().kind {
+		// NOTE: Skip until the end of source, since peek doesn't move to the end of file while we skip spaces
+		case tokEof: p.nextToken() 
+		case tokSemi: p.nextToken()
+
+		case tokLBrack: 
+			p.parseSection()
+			p.expectSemi()
+		default:
+			p.parseKeyValue() 
+			p.expectSemi()
+	}
 }
 
 fn parse*(source: str): TomlResult {
-	p := Parser{source: source, sourceLen: len(source), data: map[str]interface{}{}}
+	p := Parser{source: source, section: []str{}, sourceLen: len(source), errors: []Error{}, data: map[str]interface{}{}}
 
-	for p.get() != '\0' {
-		p.parseKeyValue()
+	for len(p.errors) == 0 && p.peekToken().kind != tokEof {
+		p.parseToplevel()
 	}
 
-	return TomlResult{p.data}
+	return TomlResult{p.errors, p.data}
+}
+
+fn (r: ^TomlResult) getError*(): ^Error {
+	if len(r.errors) > 0 {
+		return &r.errors[0]
+	}
+	return null
 }
