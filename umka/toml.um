@@ -147,10 +147,29 @@ fn (p: ^Parser) get(): char {
 	return p.source[p.location.offset]
 }
 
-fn (p: ^Parser) skipBlank() {
+
+fn (p: ^Parser) skipSpaces(): bool {
+	foundSome := isSkip(p.get())
+
 	for isSkip(p.get()) {
 		p.next()
 	}
+
+	return foundSome
+}
+
+fn (p: ^Parser) skipComments(): bool {
+	if p.get() == '#' {
+		for p.get() != '\0' && p.get() != '\n' {
+			p.next()
+		}
+		return true
+	}
+	return false
+}
+
+fn (p: ^Parser) skipBlank() {
+	for p.skipSpaces() || p.skipComments() {}
 }
 
 fn (p: ^Parser) expectToken(token: Token, toBeKind: int) {

@@ -1,11 +1,21 @@
+# Toml integrity test file
+# Test for identifier naming
 a-_ = "Dam"
+# >> Toml identifiers can start with numbers
 1 = "A\"hh"
+# >> They can also contain strings
 "\"I love you\"" = "too"
+# >> You can also mix and match strings/identifiers interchangably
 game."fps" = "60"
 
+# Sections (tables) set the prefix for the elements after it 
 [debug]
+# This is going to have key debug.editor
 editor = "true"
+# This is going to have key debug.game."player position"
 game."player position" = "false"
 
+# You can also use the same strategy mixing and matching strings and identifiers here
 [debug.2."123"]
+# This is debug.2."123".editor
 editor = ""

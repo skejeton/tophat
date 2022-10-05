@@ -1,3 +1,4 @@
+# Reassigning fields is illegal also for sections too
 debug.name = "Game"
 
 [debug]
