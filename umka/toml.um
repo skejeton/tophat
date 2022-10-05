@@ -7,8 +7,6 @@
  * 
  * Identifier tokens are not handled in nextToken/nextTokenKind because
  * TOML allows identifiers to start with numbers, so you'll have to know when you wanna retrieve it explicitly.
- * 
- * TODO: Handle newlines as semicolons, not as space
  */
 
 type (
@@ -204,6 +202,9 @@ fn (p: ^Parser) nextTokenKind(): int {
 		case '\0': 
 			return tokEof
 		default:
+			// HACK eh? Toml has a semi context dependent thing where you need to know when to pull a key and when to pull 
+			//	  			a number, because both numbers and keys can start with digits (and dash)...
+			//					I'll better figure it out. 
 			if !isIdent(p.get()) {
 				p.emitError(errorAtParser(p, errUnexpectedCharacter))
 			}

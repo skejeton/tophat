@@ -4,6 +4,8 @@
 
 import ("toml.um"; "std.um")
 
+fail := false
+
 fn readFileStr(path: str): (bool, str) {
   file := std.fopen(path, "r")
   if file == null {
@@ -26,11 +28,41 @@ fn expectToEqual(a, b: str) {
 	printf("Ok\n")
 }
 
+fn errorTest(path: str, errcode: int) {
+  if ok, input := readFileStr(path); ok {
+    result := toml.parse(input)
+    if error := result.getError(); error != null {
+      printf("%s\n", toml.formatError(error, input))
+      if error.code == errcode {
+        printf("Ok\n")
+        return 
+      }
+    }
+  }
+
+  fail = true
+  printf("FAIL\n")
+}
+
 fn main() {
-	if ok, input := readFileStr("etc/tomlt0.toml"); ok {
+  printf(">>> Check errors\n")
+  errorTest("tests/toml/error_unclosed_string_0.toml", toml.errUnclosedString)
+  errorTest("tests/toml/error_unclosed_string_1.toml", toml.errUnclosedString)
+  errorTest("tests/toml/error_unexpected_token_0.toml", toml.errUnexpectedToken)
+  errorTest("tests/toml/error_expected_newline_0.toml", toml.errExpectedNewLine)
+  errorTest("tests/toml/error_invalid_token_for_key_0.toml", toml.errExpectedKey)
+  errorTest("tests/toml/error_invalid_token_for_key_1.toml", toml.errExpectedKey)
+  errorTest("tests/toml/error_unexpected_character_1.toml", toml.errUnexpectedCharacter)
+  errorTest("tests/toml/error_unexpected_character_1.toml", toml.errUnexpectedCharacter)
+  errorTest("tests/toml/error_field_reassigned_0.toml", toml.errFieldReassigned)
+  errorTest("tests/toml/error_field_reassigned_1.toml", toml.errFieldReassigned)
+
+
+  printf(">>> Verify correct tree\n")
+	if ok, input := readFileStr("tests/toml/correct_verify.toml"); ok {
 		result := toml.parse(input)
     if error := result.getError(); error != null {
-      printf("%s", toml.formatError(error, input))
+      printf("%s\n", toml.formatError(error, input))
       return
     }
 
@@ -42,4 +74,10 @@ fn main() {
     expectToEqual(str(map[str]interface{}(result.data["debug"])["editor"]), "true")
     expectToEqual(str(map[str]interface{}(map[str]interface{}(result.data["debug"])["game"])["player position"]), "false")
 	}
+
+  if fail {
+    printf("\x1b[31mSOMETHING FAILED!\n\x1b[0m")
+  } else {
+    printf("\x1b[32mAll good!\x1b[0m")
+  }
 }
