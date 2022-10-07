@@ -4,9 +4,10 @@ import (
 	"rect.um"
 	"image.um"
 	"input.um"
-	"color.um"
 	"canvas.um"
 	"window.um"
+
+	"images.um"
 )
 
 fn pixelsplit(inp: uint32): (uint8, uint8, uint8, uint8) {
@@ -37,47 +38,64 @@ fn main() {
 	//img2 := image.mk(data, dm)
 	img2.setData(slice(data, 0, trunc(dm.x * dm.y / 2)), th.Vf2{dm.x, dm.y / 2})
 
-	dat := make([]uint32, 50 * 50)
-	for i in dat {
-		dat[i] = color.hsv(i/50.0, 1, 0.5) | 0xFF;
-	}
-	target := image.mk(dat, th.Vf2{50, 50})
-
-
+	target := image.mk(make([]uint32, 10 * 10), th.Vf2{10, 10})
 
 	for window.cycle(cam) {
-		/*
-		img.draw(th.Transform{
-			s: th.Vf2{4, 8},
-			p: th.Vf2{100, 100},
-			r: 45}, 0xaaaaffaa)
+		p := th.Vf2{1, 1}
+
+		canvas.drawText("drawOnQuad:", p, th.black, 2)
+		p.y += 12
 
 		img.drawOnQuad([4]th.Vf2{
-			th.Vf2{10, 10},
-			th.Vf2{20, 15},
-			th.Vf2{20, 30},
-			th.Vf2{0, 35}})
+			p.add(th.Vf2{10, 10}),
+			p.add(th.Vf2{20, 15}),
+			p.add(th.Vf2{20, 30}),
+			p.add(th.Vf2{0, 35})})
 
+		p.y += 36
+
+		canvas.drawText("draw:", p, th.black, 2)
+		p.y += 12
+
+		dig := sqrt(
+			img.getDims().x * img.getDims().x * 16 +
+			img.getDims().y * img.getDims().y * 64)
+
+		img.draw(th.Transform{
+			s: th.Vf2{4, 8},
+			p: th.Vf2{p.x + dig, p.y},
+			r: 45}, 0xaaaaffaa)
+
+		p.y += dig + 1
+
+		canvas.drawText("placeholders:", p, th.black, 2)
+		p.y += 12
+
+		images.test.draw(th.Transform{
+			s: th.Vf2{4, 4},
+			p: p,
+			r: 0})
+
+		p.y += img.getDims().mulf(4).y
+
+		canvas.drawText("copy, setData:", p, th.black, 2)
+		p.y += 12
 		img2.draw(th.Transform{
 			s: th.Vf2{10, 10},
-			p: th.Vf2{400, 400}})
-*/
+			p: p})
+		
+		p.y += img2.getDims().y * 10 + 1
+
+		canvas.drawText("render target:", p, th.black, 2)
+		p.y += 12
 
 		target.makeRenderTarget()
+			canvas.drawLine(th.cyan, th.Vf2{0, 0}, th.Vf2{50, 50}, 0.1)
 			img.draw(th.Transform{
-				s: th.Vf2{1, 1},
+				s: th.Vf2{0.5, 0.5},
 				p: th.Vf2{0, 0}})
-			canvas.drawText("hello", th.Vf2{0, 0}, th.red, 1)
-			/*
-			canvas.drawLine(th.cyan, th.Vf2{0, 0}, th.Vf2{50, 50}, 1)
-			*/
-		image.removeRenderTarget(cam)
-
-		canvas.drawRect(th.black, rect.mk(49, 49, 52, 52))
-		target.draw(th.Transform{s: th.Vf2{1, 1}, r: 0, p: th.Vf2{50, 50}})
-
-		canvas.drawRect(th.black, rect.mk(49, 104, 52, 52))
-		img.draw(th.Transform{s: th.Vf2{1, 1}, r: 0, p: th.Vf2{50, 105}})
+		target.removeRenderTarget(cam)
+		target.draw(th.Transform{s: th.Vf2{10, 10}, p: p})
 
 		if input.isJustPressed('q') { break }
 	}

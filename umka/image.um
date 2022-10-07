@@ -24,7 +24,7 @@ fn imgdrawninepatch(img: Image, outer, inner, dest: ^rect.Rect, color: uint32)
 fn imgupdatedata(img: Image, data: ^uint32, dm: th.Vf2)
 fn imggetdata(img: Image, data: ^uint32)
 fn imgmakerendertarget(img: Image)
-fn imgremoverendertarget(cam: ^rect.Rect)
+fn imgremoverendertarget(img: Image, cam: ^rect.Rect)
 
 // Loads an image at path.
 fn load*(path: str): Image {
@@ -149,10 +149,14 @@ fn (i: ^Image) getData*(): []uint32 {
 	return buf
 }
 
+// Sets the image a the render target. This means stuff won't be drawn onto the
+// screen, but into the image. In this mode, the scaling is always 1. An the
+// resolution of the screen are the image's dimensions.
 fn (i: ^Image) makeRenderTarget*() {
 	imgmakerendertarget(i^)
 }
 
-fn removeRenderTarget*(cam: rect.Rect) {
-	imgremoverendertarget(&cam)
+// Returns to rendering onto the screen.
+fn (i: ^Image) removeRenderTarget*(cam: rect.Rect) {
+	imgremoverendertarget(i^, &cam)
 }

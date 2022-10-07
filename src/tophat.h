@@ -179,6 +179,7 @@ typedef struct {
 	char respath[4096];
 	fu scaling;
 	th_vf2 offset;
+	th_vf2 viewport;
 	void *umka;
 
 	uu pressed[255];
@@ -210,6 +211,7 @@ typedef struct {
 
 	GLuint framebuffer;
 	GLuint depthbuffer;
+	bool has_framebuffer;
 
 	th_rect scissors[MAX_SCISSORS];
 	uu scissor;
@@ -294,6 +296,7 @@ void th_gl_init();
 GLuint th_gl_compile_shader(const char **src, GLenum type);
 GLuint th_gl_create_prog(const char *vert_src, const char *frag_src, const char **attribs, int nattribs);
 void th_gl_free_prog(GLuint prog);
+void th_gl_get_viewport_max(int *w, int *h);
 
 // image
 th_image *th_load_image(char *path);
@@ -315,7 +318,7 @@ void th_image_flush();
 int th_image_compile_shader(char *frag, char *vert);
 
 void th_image_set_as_render_target(th_image *img);
-void th_image_remove_render_target(th_rect *cam);
+void th_image_remove_render_target(th_image *img, th_rect *cam);
 
 // input
 void th_input_key(int keycode, int bDown);

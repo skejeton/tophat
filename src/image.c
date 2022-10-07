@@ -140,6 +140,8 @@ void th_image_render_transformed(th_image *img, th_transform trans, uint32_t col
 
 	trans.pos.x -= min.x*trans.scale.x;
 	trans.pos.y -= min.y*trans.scale.y;
+	trans.origin.x += min.x * trans.scale.x;
+	trans.origin.y += min.y * trans.scale.y;
 	th_transform_quad(&q, trans);
 	th_blit_tex(img, q, color);
 }
@@ -158,9 +160,7 @@ void th_blit_tex(th_image *img, th_quad q, uint32_t color) {
 	}
 
 	int sw, sh;
-	th_window_get_dimensions(&sw, &sh);
-	sh *= -0.5;
-	sw *= 0.5;
+	th_gl_get_viewport_max(&sw, &sh);
 
 	float colors[4];
 	for (int i=0; i < 4; ++i)
@@ -176,13 +176,15 @@ void th_blit_tex(th_image *img, th_quad q, uint32_t color) {
 		SWAP(bounds.tl, bounds.tr);
 		SWAP(bounds.bl, bounds.br);
 	}
+
+	const float yoff = thg->has_framebuffer ? -1.0 : 1.0;
 	const float verts[] = {
-		q.tl.x / sw - 1.0, q.tl.y / sh + 1.0, bounds.tl.x, bounds.tl.y,
-		q.tr.x / sw - 1.0, q.tr.y / sh + 1.0, bounds.tr.x, bounds.tr.y,
-		q.br.x / sw - 1.0, q.br.y / sh + 1.0, bounds.br.x, bounds.br.y,
-		q.tl.x / sw - 1.0, q.tl.y / sh + 1.0, bounds.tl.x, bounds.tl.y,
-		q.br.x / sw - 1.0, q.br.y / sh + 1.0, bounds.br.x, bounds.br.y,
-		q.bl.x / sw - 1.0, q.bl.y / sh + 1.0, bounds.bl.x, bounds.bl.y};
+		q.tl.x / sw - 1.0, q.tl.y / sh + yoff, bounds.tl.x, bounds.tl.y,
+		q.tr.x / sw - 1.0, q.tr.y / sh + yoff, bounds.tr.x, bounds.tr.y,
+		q.br.x / sw - 1.0, q.br.y / sh + yoff, bounds.br.x, bounds.br.y,
+		q.tl.x / sw - 1.0, q.tl.y / sh + yoff, bounds.tl.x, bounds.tl.y,
+		q.br.x / sw - 1.0, q.br.y / sh + yoff, bounds.br.x, bounds.br.y,
+		q.bl.x / sw - 1.0, q.bl.y / sh + yoff, bounds.bl.x, bounds.bl.y};
 
 	float *ptr = &thg->blit_batch[thg->blit_batch_size * 6 * (2 + 2 + 4)];
 	for (uu i=0; i < 6; i++) {
@@ -214,6 +216,11 @@ void th_image_flush() {
 }
 
 void th_image_set_as_render_target(th_image *img) {
+	if (thg->has_framebuffer) {
+		th_error("Another image is alredy selected as the render target.");
+		return;
+	}
+		
 	if (img->dm.w >= RENDER_TARGET_MAX_SIZE || img->dm.h >= RENDER_TARGET_MAX_SIZE) {
 		th_error("Render target can be atmost %dx%d big.",
 			RENDER_TARGET_MAX_SIZE, RENDER_TARGET_MAX_SIZE);
@@ -223,7 +230,11 @@ void th_image_set_as_render_target(th_image *img) {
 	th_image_flush();
 	th_canvas_flush();
 
-	th_calculate_scaling(img->dm.w, img->dm.h);
+	thg->scaling = 1;
+	thg->offset.x = 0;
+	thg->offset.y = 0;
+	thg->viewport = img->dm;
+	thg->has_framebuffer = 1;
 
 	glBindFramebuffer(GL_FRAMEBUFFER, thg->framebuffer);
 	
@@ -249,11 +260,19 @@ void th_image_remove_render_target(th_image *img, th_rect *cam) {
 
 	th_calculate_scaling(cam->w, cam->h);
 
+	glBindTexture(GL_TEXTURE_2D, img->gltexture);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, img->data);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, img->dm.w, img->dm.h, 0, GL_RGBA,
+		GL_UNSIGNED_INT_8_8_8_8, img->data);
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	int w,h;
 	th_window_get_dimensions(&w, &h);
 	glViewport(0, 0, w, h);
+	thg->viewport.w = w;
+	thg->viewport.h = h;
+	thg->has_framebuffer = 0;
 }
 
 void _th_rdimg(th_image *img, unsigned char *data) {
