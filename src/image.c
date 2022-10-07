@@ -238,8 +238,13 @@ void th_image_set_as_render_target(th_image *img) {
 		th_error("Could not setup image render target %x, %x.", glGetError(), glCheckFramebufferStatus(GL_FRAMEBUFFER));
 }
 
-void th_image_remove_render_target(th_rect *cam) {
-	th_image_flush();
+void th_image_remove_render_target(th_image *img, th_rect *cam) {
+	if (!thg->has_framebuffer) {
+		th_error("No render target is set.");
+		return;
+	}
+
+	th_canvas_flush();
 	th_image_flush();
 
 	th_calculate_scaling(cam->w, cam->h);
