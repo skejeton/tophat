@@ -19,3 +19,9 @@ game."player position" = "false"
 [debug.2."123"]
 # This is debug.2."123".editor
 editor = ""
+
+[numbers]
+integer = 123
+integer_underscored = 123_456
+float = 123.456
+float_underscored = 1_2_3.4_5_6

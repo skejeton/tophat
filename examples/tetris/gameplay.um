@@ -1,6 +1,5 @@
 import (
-	"falling_piece.um"
-	"th.um"
+	"falling_piece.um" "th.um"
 	"field.um"
 	"input.um"
 	"presets.um"
