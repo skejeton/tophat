@@ -20,8 +20,19 @@ game."player position" = "false"
 # This is debug.2."123".editor
 editor = ""
 
+[inline]
+test = { a.12 = 42 }
+
 [numbers]
 integer = 123
 integer_underscored = 123_456
-float = 123.456
-float_underscored = 1_2_3.4_5_6
+integer_negative = -123_456
+mcdonalds_phone_number = +1_512_335_8065
+floating_point = 1_2_3.45_6
+
+
+#[[entity]]
+#name = "joe"
+
+#[[entity]]
+#name = "bubs"

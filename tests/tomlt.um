@@ -28,6 +28,20 @@ fn expectToEqual(a, b: str) {
 	printf("Ok\n")
 }
 
+fn expectToEqualInt(a, b: int) {
+  if a != b {
+    error(sprintf("'%d' != '%d'", a, b))
+  }
+  printf("Ok\n")
+}
+
+fn expectToEqualReal(a, b: real) {
+  if a != b {
+    error(sprintf("'%g' != '%g'", a, b))
+  }
+  printf("Ok\n")
+}
+
 fn errorTest(path: str, errcode: int) {
   if ok, input := readFileStr(path); ok {
     result := toml.parse(input)
@@ -73,6 +87,12 @@ fn main() {
     expectToEqual(str(map[str]interface{}(result.data["game"])["fps"]), "60")
     expectToEqual(str(map[str]interface{}(result.data["debug"])["editor"]), "true")
     expectToEqual(str(map[str]interface{}(map[str]interface{}(result.data["debug"])["game"])["player position"]), "false")
+
+    expectToEqualInt(int(map[str]interface{}(result.data["numbers"])["integer"]), 123)
+    expectToEqualInt(int(map[str]interface{}(result.data["numbers"])["integer_underscored"]), 123456)
+    expectToEqualInt(int(map[str]interface{}(result.data["numbers"])["integer_negative"]), -123456)
+    expectToEqualInt(int(map[str]interface{}(result.data["numbers"])["mcdonalds_phone_number"]), +15123358065)
+    expectToEqualReal(real(map[str]interface{}(result.data["numbers"])["floating_point"]), 123.456)
 	}
 
   if fail {
