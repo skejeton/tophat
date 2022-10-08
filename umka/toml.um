@@ -3,6 +3,8 @@
  * 
  * NUL (\0) is the EOF character.
  *
+ * It CAN'T handle dates and times yet.
+ *
  * Identifier tokens and strings tokens are the same
  * 
  * Identifier tokens are not handled in nextToken/nextTokenKind because
@@ -28,6 +30,7 @@ type (
 		sourceLen: uint
 		source: str
 
+		arrays: map[str]interface{}
 		section: map[str]interface{}
 
 		errors: []Error
@@ -45,6 +48,8 @@ type (
 		data: map[str]interface{}
 	}
 )
+
+
 
 fn errorAtToken(token: Token, code: int): Error {
 	return Error{location: token.location, code: code}
@@ -67,9 +72,11 @@ const (
 	tokDot = 5
 	tokLBrack = 6 // [
 	tokRBrack = 7 // ]
-	tokMapOpen = 8
-	tokMapClose = 9
-	tokDelim = 10
+	tokListOpen = 8 // [[ 
+	tokListClose = 9 // ]]
+	tokMapOpen = 10
+	tokMapClose = 11
+	tokDelim = 12
 
 	errUnknown* = 0
 	errUnclosedString* = 1
@@ -81,6 +88,69 @@ const (
 	errExpectedDigit* = 7
 	errCount* = 8
 )
+
+fn updateAccessor(accessor: Accessor, tree: map[str]interface{}, value: interface{}): bool {
+	for i, key in accessor {
+		if i == len(accessor)-1 {
+			tree[key] = value
+		} else {
+			if !validkey(tree, key) {
+				tree[key] = map[str]interface{}{}
+				tree = map[str]interface{}(tree[key])
+			} else if leaf := ^map[str]interface{}(tree[key]); leaf != null {
+				tree = leaf^
+			} else {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+fn setAccessor(accessor: Accessor, tree: map[str]interface{}, value: interface{}): bool {
+	printf("%s\n", repr(tree))
+	for i, key in accessor {
+		if i == len(accessor)-1 {
+			if !validkey(tree, key) {
+				tree[key] = value
+			} else {
+				return false
+			}
+		} else {
+			if !validkey(tree, key) {
+				tree[key] = map[str]interface{}{}
+				tree = map[str]interface{}(tree[key])
+			} else if leaf := ^map[str]interface{}(tree[key]); leaf != null {
+				tree = leaf^
+			} else {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+fn getAccessor(accessor: Accessor, tree: map[str]interface{}): interface{} {
+	for i, key in accessor {
+		if i == len(accessor)-1 {
+			if validkey(tree, key) {
+				return tree[key]
+			} else {
+				return null
+			}
+		} else {
+			if leaf := ^map[str]interface{}(tree[key]); leaf != null {
+				tree = leaf^
+			} else {
+				return null
+			}
+		}
+	}
+
+	return null
+}
 
 fn formatError*(error: ^Error, source: str): str {
 	const errCodeStr = [errCount]str{
@@ -223,9 +293,17 @@ fn (p: ^Parser) nextTokenKind(): int {
 			return tokDot
 		case '[': 
 			p.next() // skip '['
+			if p.get() == '[' {
+				p.next() // skip '['
+				return tokListOpen
+			}
 			return tokLBrack
 		case ']': 
 			p.next() // skip ']'
+			if p.get() == ']' {
+				p.next() // skip ']'
+				return tokListClose
+			}
 			return tokRBrack
 		case '{': 
 			p.next() // skip '{'
@@ -322,21 +400,14 @@ fn (p: ^Parser) parseAccessor(): Accessor {
 }
 
 fn (p: ^Parser) setAccessor(location: FileLoc, accessor: Accessor, tree: map[str]interface{}, value: interface{}) {
-	for i, key in accessor {
-		if i == len(accessor)-1 {
-			if !valid(tree[key]) {
-				tree[key] = value
-			} else {
-				p.emitError(errorAtLocation(location, errFieldReassigned))
-			}
-		} else {
-			if !validkey(tree, key) {
-				tree[key] = map[str]interface{}{}
-				tree = map[str]interface{}(tree[key])
-			} else {
-				tree = map[str]interface{}(tree[key])
-			}
-		}
+	if !setAccessor(accessor, tree, value) {
+		p.emitError(errorAtLocation(location, errFieldReassigned))
+	}
+}
+
+fn (p: ^Parser) updateAccessor(location: FileLoc, accessor: Accessor, tree: map[str]interface{}, value: interface{}) {
+	if !updateAccessor(accessor, tree, value) {
+		p.emitError(errorAtLocation(location, errFieldReassigned))
 	}
 }
 
@@ -412,10 +483,38 @@ fn (p: ^Parser) parseMap(): map[str]interface{} {
 	return result
 }
 
+fn (p: ^Parser) parseValue(): interface{}
+fn (p: ^Parser) parseArray(): []interface{} {
+	result := []interface{}{}
+
+	p.expectToken(p.nextToken(), tokLBrack)
+	for p.isntToken(tokRBrack) {
+		// FIXME: Could there be a better way to do this? Sigh..
+		for p.peekToken().kind == tokSemi {
+			p.nextToken()
+		}
+
+		result = append(result, p.parseValue())
+
+		for p.peekToken().kind == tokSemi {
+			p.nextToken()
+		}
+
+		if p.isntToken(tokRBrack) {
+			p.expectToken(p.nextToken(), tokDelim)
+		}
+	}
+
+	p.expectToken(p.nextToken(), tokRBrack)
+	return result
+}
+
 fn (p: ^Parser) parseValue(): interface{} {
 	p.skipBlank()
 
-	if p.peekToken().kind == tokMapOpen {
+	if p.peekToken().kind == tokLBrack {
+		return p.parseArray()
+	} else if p.peekToken().kind == tokMapOpen {
 		return p.parseMap()
 	} else if p.get() == '"' {
 		value := p.nextToken()
@@ -444,12 +543,37 @@ fn (p: ^Parser) parseKeyValue(into: map[str]interface{}) {
 }
 
 fn (p: ^Parser) parseSection() {
-	location := p.location
 	p.expectToken(p.nextToken(), tokLBrack)
 
+	location := p.location
 	p.section = map[str]interface{}{}
 	p.setAccessor(location, p.parseAccessor(), p.data, p.section)
 	p.expectToken(p.nextToken(), tokRBrack)
+}
+
+fn (p: ^Parser) parseSectionArray() {
+	p.expectToken(p.nextToken(), tokListOpen)
+	location := p.location
+	accessor := p.parseAccessor()
+
+	p.section = map[str]interface{}{}
+
+	printf("%s\n", repr(getAccessor(accessor, p.arrays)))
+	if arr := ^[]interface{}(getAccessor(accessor, p.arrays)); arr != null {
+		arr ^= append(arr^, p.section)
+		p.updateAccessor(location, accessor, p.data, arr^)
+	} else {
+		array := new([]interface{})
+		array ^= []interface{}{p.section}
+
+		if !setAccessor(accessor, p.arrays, array) {
+			p.emitError(errorAtLocation(location, errFieldReassigned))
+		}
+
+		p.setAccessor(location, accessor, p.data, array^)
+	}
+
+	p.expectToken(p.nextToken(), tokListClose)
 }
 
 fn (p: ^Parser) expectSemi() {
@@ -465,6 +589,9 @@ fn (p: ^Parser) parseToplevel() {
 		case tokEof: p.nextToken() 
 		case tokSemi: p.nextToken()
 
+		case tokListOpen: 
+			p.parseSectionArray()
+			p.expectSemi()
 		case tokLBrack: 
 			p.parseSection()
 			p.expectSemi()
@@ -475,7 +602,7 @@ fn (p: ^Parser) parseToplevel() {
 }
 
 fn parse*(source: str): TomlResult {
-	p := Parser{source: source, sourceLen: len(source), errors: []Error{}, data: map[str]interface{}{}}
+	p := Parser{source: source, sourceLen: len(source), errors: []Error{}, arrays: map[str]interface{}{}, data: map[str]interface{}{}}
 	p.section = p.data
 
 	for len(p.errors) == 0 && p.peekToken().kind != tokEof {

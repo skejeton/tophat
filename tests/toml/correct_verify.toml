@@ -30,9 +30,18 @@ integer_negative = -123_456
 mcdonalds_phone_number = +1_512_335_8065
 floating_point = 1_2_3.45_6
 
+array = [
+       1, 2, 3,
 
-#[[entity]]
-#name = "joe"
+       4, 5, 6,
 
-#[[entity]]
-#name = "bubs"
+       7, 8, 9]
+
+[[entities]]
+name = "joe"
+
+[[blob]]
+name = "bob"
+
+[[entities]]
+name = "bubs"
