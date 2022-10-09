@@ -42,6 +42,13 @@ fn expectToEqualReal(a, b: real) {
   printf("Ok\n")
 }
 
+fn expectToEqualBool(a, b: bool) {
+  if a != b {
+    error(sprintf("%s != %s", repr(a), repr(b)))
+  }
+  printf("Ok\n")
+}
+
 fn errorTest(path: str, errcode: int) {
   if ok, input := readFileStr(path); ok {
     result := toml.parse(input)
@@ -85,8 +92,8 @@ fn main() {
 		expectToEqual(str(result.data["1"]), "A\"hh")
 		expectToEqual(str(result.data["\"I love you\""]), "too")
     expectToEqual(str(map[str]interface{}(result.data["game"])["fps"]), "60")
-    expectToEqual(str(map[str]interface{}(result.data["debug"])["editor"]), "true")
-    expectToEqual(str(map[str]interface{}(map[str]interface{}(result.data["debug"])["game"])["player position"]), "false")
+    expectToEqualBool(bool(map[str]interface{}(result.data["debug"])["editor"]), true)
+    expectToEqualBool(bool(map[str]interface{}(map[str]interface{}(result.data["debug"])["game"])["player position"]), false)
 
     expectToEqualInt(int(map[str]interface{}(result.data["numbers"])["integer"]), 123)
     expectToEqualInt(int(map[str]interface{}(result.data["numbers"])["integer_underscored"]), 123456)

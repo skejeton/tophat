@@ -11,9 +11,9 @@ game."fps" = "60"
 # Sections (tables) set the prefix for the elements after it 
 [debug]
 # This is going to have key debug.editor
-editor = "true"
+editor = true
 # This is going to have key debug.game."player position"
-game."player position" = "false"
+game."player position" = false
 
 # You can also use the same strategy mixing and matching strings and identifiers here
 [debug.2."123"]
@@ -32,9 +32,7 @@ floating_point = 1_2_3.45_6
 
 array = [
        1, 2, 3,
-
        4, 5, 6,
-
        7, 8, 9]
 
 [[entities]]

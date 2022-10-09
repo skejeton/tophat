@@ -260,6 +260,21 @@ fn (p: ^Parser) expectToken(token: Token, toBeKind: int) {
 	}
 }
 
+fn (p: ^Parser) nextIdent(): str {
+
+	if !isIdent(p.get()) {
+		return ""
+	}
+
+	value := ""
+	for isIdent(p.get()) {
+		value += p.get()
+		p.next()
+	}
+
+	return value
+}
+
 fn (p: ^Parser) nextTokenString(): int {
 	location := p.location
 
@@ -331,16 +346,14 @@ fn (p: ^Parser) nextTokenKind(): int {
 	return tokInvalid
 }
 
-fn (p: ^Parser) nextIdent(): Token {
+fn (p: ^Parser) nextKeyIdent(): Token {
 	p.skipBlank()
 	location := p.location
 	start := p.location.offset
 	tt := tokInvalid
 
-	if isIdent(p.get()) {
-		for isIdent(p.get()) {
-			p.next()
-		}
+	// TODO: Maybe have a different nextIdent function which returns ok/fail instead of a string
+	if p.nextIdent() != "" {
 		tt = tokString
 	} else {
 		tt = p.nextTokenKind()
@@ -389,11 +402,11 @@ fn escapeStrToken(token: Token): str {
 }
 
 fn (p: ^Parser) parseAccessor(): Accessor {
-	accessor := Accessor{escapeStrToken(p.nextIdent())}
+	accessor := Accessor{escapeStrToken(p.nextKeyIdent())}
 
 	for p.peekToken().kind == tokDot {
 		p.nextToken() // Skip dot
-		accessor = append(accessor, escapeStrToken(p.nextIdent()))
+		accessor = append(accessor, escapeStrToken(p.nextKeyIdent()))
 	}
 
 	return accessor
@@ -522,6 +535,8 @@ fn (p: ^Parser) parseValue(): interface{} {
 		return escapeStrToken(value)
 	} else if isNumStart(p.get()) {
 		return p.parseNumber()
+	} else if ident := p.nextIdent(); ident == "true" || ident == "false" {
+		return ident == "true"
 	} else {
 		p.emitError(errorAtParser(p, errUnexpectedCharacter))
 	}
