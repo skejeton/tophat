@@ -194,7 +194,11 @@ fn escapeStr(string: str): str {
 		if string[pos] == '\\' {
 			pos++
 			if pos < len(string) {
-				result += string[pos]
+				if string[pos] == 'n' {
+					result += '\n'
+				} else {
+					result += string[pos]
+				}
 				pos++
 			}
 		} else {
