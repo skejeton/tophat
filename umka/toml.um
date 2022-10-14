@@ -184,46 +184,24 @@ fn isNumStart(c: char): bool {
 	return (c == '.') || (c == '+') || (c == '-') || (c >= '0' && c <= '9')
 }
 
-// FIXME: this function will choke on invalid input
-fn escapeStr(string: str): str {
-	pos := 0
-	pos += 1 // skip "
-	result := ""
-
-	for pos < len(string) && string[pos] != "\"" {
-		if string[pos] == '\\' {
-			pos++
-			if pos < len(string) {
-				if string[pos] == 'n' {
-					result += '\n'
-				} else {
-					result += string[pos]
-				}
-				pos++
-			}
-		} else {
-			result += string[pos]
-			pos++
-		}
-	}
-
-	return result
-}
-
 fn (p: ^Parser) emitError(error: Error) {
 	p.errors = append(p.errors, error)
 }
 
-fn (p: ^Parser) next() {
-	if p.location.offset < p.sourceLen {
-		if p.source[p.location.offset] == '\n' {
-			p.location.line += 1
-			p.location.column = 0
-		} else {
-			p.location.column += 1
+fn (p: ^Parser) next(n: int = 1) {
+	if n > 0 {
+		if p.location.offset < p.sourceLen {
+			if p.source[p.location.offset] == '\n' {
+				p.location.line += 1
+				p.location.column = 0
+			} else {
+				p.location.column += 1
+			}
+			p.location.offset += 1
 		}
-		p.location.offset += 1
-	}
+
+		p.next(n-1)
+	} 
 }
 
 fn (p: ^Parser) get(): char {
@@ -233,6 +211,20 @@ fn (p: ^Parser) get(): char {
 	return p.source[p.location.offset]
 }
 
+fn safeSizedSlice(string: str, at: uint, size: uint): str {
+	length := len(string)
+
+	// Clamp the length if out of bounds
+	if at+size > length {
+		size = length-at
+	}
+
+	return slice(string, at, size+at)
+}
+
+fn (p: ^Parser) startsWith(against: str): bool {
+	return safeSizedSlice(p.source, p.location.offset, len(against)) == against
+}
 
 fn (p: ^Parser) skipSpaces(): bool {
 	foundSome := isSkip(p.get())
@@ -258,6 +250,13 @@ fn (p: ^Parser) skipBlank() {
 	for p.skipSpaces() || p.skipComments() {}
 }
 
+
+fn (p: ^Parser) expectTokenKind(kind, toBeKind: int) {
+	if kind != toBeKind {
+		p.emitError(errorAtParser(p, errUnexpectedToken))
+	}
+}
+
 fn (p: ^Parser) expectToken(token: Token, toBeKind: int) {
 	if token.kind != toBeKind {
 		p.emitError(errorAtToken(token, errUnexpectedToken))
@@ -279,31 +278,52 @@ fn (p: ^Parser) nextIdent(): str {
 	return value
 }
 
-fn (p: ^Parser) nextTokenString(): int {
+fn handleEscapeChar(c: char): char {
+	switch c {
+		case 'n':	return '\n'
+		case 't':	return '\t'
+	}
+	return c
+}
+
+fn (p: ^Parser) nextTokenString(): (int, str) {
+	result := ""
 	location := p.location
 
-	p.next() // Skip quote
-	for p.get() != '\0' && p.get() != '\n' && p.get() != '"' {
-		if p.get() == '\\' {
+	if p.get() == '"' {
+		p.next() // Skip quote
+		for p.get() != '\0' && p.get() != '\n' && p.get() != '"' {
+			if p.get() == '\\' {
+				p.next()
+				result += handleEscapeChar(p.get())
+				p.next()
+				continue;
+			}
+
+			result += p.get()
 			p.next()
 		}
-		p.next()
+
+		// Unfinished string
+		if p.get() == '\0' || p.get() == '\n' {
+			p.emitError(errorAtLocation(location, errUnclosedString))
+			return tokInvalid, result
+		}
+
+		p.next() // Skip quote
+
+	} else {
+		return tokInvalid, result
 	}
 
-	// Unfinished string
-	if p.get() == '\0' || p.get() == '\n' {
-		p.emitError(errorAtLocation(location, errUnclosedString))
-		return tokInvalid
-	}
-
-	p.next() // Skip quote
-	return tokString
+	return tokString, result
 }
 
 fn (p: ^Parser) nextTokenKind(): int {
 	switch (p.get()) {
 		case '"':
-			return p.nextTokenString()
+			kind, value := p.nextTokenString()
+			return kind
 		case '=': 
 			p.next() // skip '='
 			return tokAssign
@@ -350,28 +370,25 @@ fn (p: ^Parser) nextTokenKind(): int {
 	return tokInvalid
 }
 
-fn (p: ^Parser) nextKeyIdent(): Token {
+fn (p: ^Parser) nextKeyIdent(): str {
 	p.skipBlank()
+
 	location := p.location
-	start := p.location.offset
-	tt := tokInvalid
+	kind := tokInvalid
 
 	// TODO: Maybe have a different nextIdent function which returns ok/fail instead of a string
-	if p.nextIdent() != "" {
-		tt = tokString
+	result := p.nextIdent()
+	if result != "" {
+		kind = tokString
 	} else {
-		tt = p.nextTokenKind()
+		kind, result = p.nextTokenString()
 	}
 
-	end := p.location.offset
-
-	token := Token{kind: tt, value: slice(p.source, start, end), location: location}
-
-	if tt != tokString {
-		p.emitError(errorAtToken(token, errExpectedKey))
+	if kind != tokString {
+		p.emitError(errorAtLocation(location, errExpectedKey))
 	}
 
-	return token
+	return result
 }
 
 fn (p: ^Parser) nextToken(): Token {
@@ -396,21 +413,12 @@ fn (p: ^Parser) peekToken(): Token {
 
 	return token
 }
-
-// Runs escape sequences, if it's a quote string
-fn escapeStrToken(token: Token): str {
-	if token.kind == tokString && token.value[0] == '"' {
-		return escapeStr(token.value)
-	}
-	return token.value
-}
-
 fn (p: ^Parser) parseAccessor(): Accessor {
-	accessor := Accessor{escapeStrToken(p.nextKeyIdent())}
+	accessor := Accessor{p.nextKeyIdent()}
 
 	for p.peekToken().kind == tokDot {
 		p.nextToken() // Skip dot
-		accessor = append(accessor, escapeStrToken(p.nextKeyIdent()))
+		accessor = append(accessor, p.nextKeyIdent())
 	}
 
 	return accessor
@@ -534,9 +542,11 @@ fn (p: ^Parser) parseValue(): interface{} {
 	} else if p.peekToken().kind == tokMapOpen {
 		return p.parseMap()
 	} else if p.get() == '"' {
-		value := p.nextToken()
-		p.expectToken(value, tokString)
-		return escapeStrToken(value)
+		kind, string := p.nextTokenString()
+
+		// TODO: expectTokenKind will point where the parser's at rather than the start of the invalid token
+		p.expectTokenKind(kind, tokString)
+		return string
 	} else if isNumStart(p.get()) {
 		return p.parseNumber()
 	} else if ident := p.nextIdent(); ident == "true" || ident == "false" {

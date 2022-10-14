@@ -23,6 +23,7 @@ editor = ""
 [inline]
 test = { a.12 = 42 }
 
+
 [numbers]
 integer = 123
 integer_underscored = 123_456
